@@ -1,0 +1,6 @@
+# Слова и /regex/, которых не должно быть в паках этого источника.
+# Пригодится, если часть скиллов вы собираетесь отдать в публичный multi-agent-kit:
+#   npx multi-agent-kit lint path/to/packs --deny lint-deny.txt
+# Примеры: имена клиентов, внутренние домены и хосты.
+# client-name
+# /internal\.example\.com/

@@ -1,0 +1,4 @@
+{
+  "id": "{{kit.id}}",
+  "private": {{kit.private}}
+}

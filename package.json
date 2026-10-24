@@ -16,6 +16,9 @@
     "src",
     "packs",
     "template",
+    "kit-template",
+    "docs",
+    "AGENTS.md",
     "multi-agent-kit.source.json"
   ],
   "scripts": {

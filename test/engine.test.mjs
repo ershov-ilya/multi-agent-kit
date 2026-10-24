@@ -97,6 +97,12 @@ test("private outputs stay out of git and out of public manifests", async () => 
     assert.doesNotMatch(status, /founder/);
     spawnSync("git", ["add", "-f", ".claude/skills/founder/SKILL.md"], { cwd: project });
     assert.match(run(["check"], false), /private files are tracked/);
+    const config = JSON.parse(await readFile(path.join(project, "multi-agent-kit.json"), "utf8"));
+    await writeFile(path.join(project, "multi-agent-kit.json"), JSON.stringify({ ...config, commitPrivate: true }));
+    run(["sync"]);
+    run(["check"]);
+    assert.match(await readFile(path.join(project, ".claude/.agent-kit-manifest.json"), "utf8"), /founder/);
+    assert.doesNotMatch(await readFile(path.join(project, ".git/info/exclude"), "utf8"), /founder/);
   } finally {
     await rm(base, { recursive: true });
   }
@@ -254,6 +260,30 @@ test("create scaffolds a project that passes check with the bundled packs", asyn
     runner(project)(["check"]);
     run(["create", "my-app"], false);
     run(["create", "Bad_Name"], false);
+  } finally {
+    await rm(base, { recursive: true });
+  }
+});
+
+test("new-kit starts a private source that a project can use", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "multi-agent-kit-kit-"));
+  const run = runner(base);
+  try {
+    run(["new-kit", "acme-kit", "--no-git"]);
+    const kit = path.join(base, "acme-kit");
+    assert.deepEqual(JSON.parse(await readFile(path.join(kit, "multi-agent-kit.source.json"), "utf8")), { id: "acme-kit", private: true });
+    await access(path.join(kit, ".gitignore"));
+    assert.match(await readFile(path.join(kit, ".github/workflows/lint.yml"), "utf8"), /multi-agent-kit@\^\d/);
+    assert.match(run(["lint", "acme-kit"]), /0 errors, 0 warnings/);
+    await write(base, "project/multi-agent-kit.json", JSON.stringify({ sources: [{ path: "../acme-kit" }], packs: ["acme-kit:team"], vars: { tracker_url: "https://tracker.example" } }));
+    spawnSync("git", ["init", "-q"], { cwd: path.join(base, "project") });
+    runner(path.join(base, "project"))(["sync"]);
+    const skill = await readFile(path.join(base, "project/.claude/skills/team-conventions/SKILL.md"), "utf8");
+    assert.match(skill, /Как работает наша команда/);
+    assert.match(skill, /https:\/\/tracker\.example/);
+    assert.match(await readFile(path.join(base, "project/.git/info/exclude"), "utf8"), /team-conventions/);
+    run(["new-kit", "team-kit", "--public", "--no-git"]);
+    assert.equal(JSON.parse(await readFile(path.join(base, "team-kit/multi-agent-kit.source.json"), "utf8")).private, false);
   } finally {
     await rm(base, { recursive: true });
   }

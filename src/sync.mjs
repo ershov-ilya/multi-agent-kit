@@ -207,6 +207,9 @@ export async function plan(root, options = {}) {
     }
   }
 
+  // A project that commits private files treats them like any other generated file.
+  if (config.commitPrivate) for (const output of outputs.values()) output.private = false;
+
   const activeRoots = [...new Set(config.targets.flatMap((target) => PLATFORM_ROOTS[target]))];
   for (const platformRoot of activeRoots) {
     const files = [...outputs].filter(([file, output]) => file.startsWith(`${platformRoot}/`) && !output.private).map(([file]) => file);
@@ -316,6 +319,6 @@ export async function sync(root, { check = false, update = false, takeOver = fal
   await mkdir(stateDirectory, { recursive: true });
   await writeFile(path.join(stateDirectory, ".gitignore"), "*\n", "utf8");
   await writeFile(path.join(root, PRIVATE_MANIFEST), `${JSON.stringify({ files: privateFiles.sort() }, null, 2)}\n`, "utf8");
-  if (context && !config.commitPrivate) await updateExclude(context, privateFiles);
+  if (context) await updateExclude(context, privateFiles);
   return { ...result, changed, stale, trackedPrivate, takenOver, written: true };
 }

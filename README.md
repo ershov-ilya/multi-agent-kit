@@ -77,6 +77,12 @@ Files generated from it are listed in `.git/info/exclude`, never in committed ma
 public one, so the same path is never public in one checkout and private in another. Teammates without
 access to a source marked `"optional": true` get a warning instead of an error.
 
+### Your own kits
+
+Team process, internal services and personal notes live in kits: separate (usually private)
+repositories with the same format. Start one with `npx multi-agent-kit new-kit acme-team-kit` and
+follow [docs/private-and-team-kits.md](docs/private-and-team-kits.md).
+
 ### Edit anywhere, keep one source
 
 Edit a generated file by hand, then move the change back to where it came from:
@@ -100,6 +106,7 @@ clone: `{ "package": "multi-agent-kit", "path": "~/code/multi-agent-kit" }`.
 | `decisions create TYPE scope topic` / `decisions index` | numbered RFC / ADR / OPS documents |
 | `init` | create `multi-agent-kit.json` (reuses a legacy `agent-kit/` folder) |
 | `create <dir>` | start a project from the template |
+| `new-kit <dir> [--public]` | start a private or team source of packs |
 
 ## Packs in this package
 
@@ -109,7 +116,7 @@ clone: `{ "package": "multi-agent-kit", "path": "~/code/multi-agent-kit" }`.
 | `decisions` | RFC / ADR / OPS process, `/adr`, `decision-review` agent |
 | `thinking` | `exothinking` — thinking partner for open-ended problems |
 | `product` | `jobs-to-be-done`, `octalysis`, `nudge`, `user-best-practices-and-habits`, `presentation`, `state-transitions` |
-| `growth` | `seogeo`, `internet-marketing` |
+| `growth` | `seogeo`, `internet-marketing`, `micro-markup` (Open Graph, JSON-LD) |
 | `safety` | `secure-by-design`, `legal` (Russian and international law for digital products) |
 
 ## Contributing

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { adopt } from "../src/adopt.mjs";
-import { create } from "../src/create.mjs";
+import { create, createKit } from "../src/create.mjs";
 import { decisions } from "../src/decisions.mjs";
 import { init } from "../src/init.mjs";
 import { lint } from "../src/lint.mjs";
@@ -24,6 +24,8 @@ Usage:
   multi-agent-kit init                        create multi-agent-kit.json in this project
   multi-agent-kit create <dir> [--name n] [--install] [--no-git]
                                               start a new project from the template
+  multi-agent-kit new-kit <dir> [--id id] [--public] [--no-git]
+                                              start a private (default) or team source of packs
 
 Options:
   --root <dir>   project root (default: current directory)
@@ -158,6 +160,18 @@ async function main() {
     const result = await create(args[0], { name, install, initGit });
     console.log(`created ${result.projectName} in ${result.directory} (${result.generated} agent files)`);
     console.log(`next: cd ${path.relative(process.cwd(), result.directory) || "."}${install ? "" : " && npm install"} && npm run agents:check`);
+    return;
+  }
+
+  if (command === "new-kit") {
+    const id = takeOption(args, "--id");
+    const publicKit = takeFlag(args, "--public");
+    const initGit = !takeFlag(args, "--no-git");
+    assertNoOptions(args);
+    if (args.length !== 1) throw new Error("new-kit needs a target directory");
+    const result = await createKit(args[0], { id, publicKit, initGit });
+    console.log(`created ${publicKit ? "public" : "private"} kit "${result.id}" in ${result.directory}`);
+    console.log(`next: edit packs/team, push it to a ${publicKit ? "" : "private "}repository and add it to "sources" in a project (see README.md)`);
     return;
   }
 
