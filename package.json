@@ -1,6 +1,6 @@
 {
   "name": "multi-agent-kit",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "One source of skills, agents, rules and commands for Claude Code, Cursor and Codex, with public and private layers",
   "type": "module",
   "bin": {
