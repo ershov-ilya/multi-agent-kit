@@ -31,5 +31,6 @@ behaviour change. Generated output must stay deterministic: running `sync` twice
 
 ## Releases
 
-Maintainers bump `version` in `package.json` (and `create-multi-agent-project/package.json` when the
-template changes), tag `vX.Y.Z` and publish both packages to npm.
+Maintainers run `npm run version:patch`, `version:minor` or `version:major` on a clean tree: it bumps
+both packages (and the wrapper's dependency on multi-agent-kit), commits `release: vX.Y.Z` and tags it.
+Then `git push --follow-tags` and publish both packages to npm.

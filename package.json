@@ -23,7 +23,10 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "lint": "node bin/multi-agent-kit.mjs lint packs"
+    "lint": "node bin/multi-agent-kit.mjs lint packs",
+    "version:major": "node scripts/bump.mjs major",
+    "version:minor": "node scripts/bump.mjs minor",
+    "version:patch": "node scripts/bump.mjs patch"
   },
   "engines": {
     "node": ">=20"
