@@ -49,7 +49,7 @@ export async function layerItems(layerRoot, origin) {
   return items;
 }
 
-async function indexPacks(sources) {
+export async function indexPacks(sources) {
   const packs = [];
   for (const [order, source] of sources.entries()) {
     for (const name of await subdirectories(path.join(source.directory, "packs"))) {
@@ -59,7 +59,7 @@ async function indexPacks(sources) {
   return packs;
 }
 
-function findPack(packs, reference) {
+export function findPack(packs, reference) {
   const [sourceId, name] = reference.includes(":") ? reference.split(":") : [null, reference];
   const matches = packs.filter((pack) => pack.name === name && (!sourceId || pack.source.id === sourceId));
   if (!matches.length) {
@@ -72,7 +72,7 @@ function findPack(packs, reference) {
   return matches[0];
 }
 
-const excluded = (item, patterns) => patterns.some((pattern) => pattern === item.id || pattern === item.name);
+export const excluded = (item, patterns) => patterns.some((pattern) => pattern === item.id || pattern === item.name);
 
 // Later layers win: packs follow source order, then config order; single includes and the local layer come last.
 export async function collect(root, config, sources) {
@@ -94,15 +94,6 @@ export async function collect(root, config, sources) {
     }
     items.set(item.id, item);
   };
-  const packOrigin = (pack) => ({
-    source: pack.source.id,
-    pack: pack.name,
-    private: pack.source.private,
-    root: pack.directory,
-    label: `${pack.source.id}:${pack.name}`,
-    writable: pack.source.mode === "path",
-  });
-
   const defaults = {};
   for (const { pack } of selected) {
     Object.assign(defaults, (await packMeta(pack.directory)).vars);
@@ -122,10 +113,22 @@ export async function collect(root, config, sources) {
   if (config.local) {
     const localRoot = path.join(root, config.local);
     if (!await isDirectory(localRoot)) throw new Error(`Local layer not found: ${config.local}`);
-    const origin = { source: "local", pack: null, private: false, root: localRoot, label: `local:${config.local}`, writable: true };
-    for (const item of await layerItems(localRoot, origin)) put(item);
+    for (const item of await layerItems(localRoot, localOrigin(root, config))) put(item);
   }
   return { items, shadows, defaults };
+}
+
+export const packOrigin = (pack) => ({
+  source: pack.source.id,
+  pack: pack.name,
+  private: pack.source.private,
+  root: pack.directory,
+  label: `${pack.source.id}:${pack.name}`,
+  writable: pack.source.mode === "path",
+});
+
+export function localOrigin(root, config) {
+  return { source: "local", pack: null, private: false, root: path.join(root, config.local), label: `local:${config.local}`, writable: true };
 }
 
 export function fileLabel(item, file) {

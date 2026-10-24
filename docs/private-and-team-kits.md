@@ -79,6 +79,9 @@ names instead.
 ## 5. Editing workflow
 
 - Change a team skill in the kit repo, open a pull request there, merge, then `sync --update` in projects.
+- Created a skill right in a project (`.claude/skills/<name>/`)? `npx multi-agent-kit adopt --new --to <kit-id>:<pack>`
+  moves it into the kit and adds it to this project; commit it in the kit, other projects get it with
+  `enable <name>` after `sync --update`.
 - Changed it inside a project by accident? `npx multi-agent-kit adopt <generated file>` moves the edit
   into your working copy of the kit (needs `path`), then commit it in the kit.
 - Promote a skill to the public package: run `npx multi-agent-kit lint packs --deny lint-deny.txt`

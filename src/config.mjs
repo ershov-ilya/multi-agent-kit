@@ -6,7 +6,7 @@ export const CONFIG_FILE = "multi-agent-kit.json";
 export const TARGETS = ["cursor", "claude", "codex"];
 const KNOWN_KEYS = new Set([
   "$schema", "name", "targets", "sources", "packs", "include", "exclude",
-  "local", "vars", "cli", "commitPrivate", "decisions",
+  "local", "vars", "cli", "commitPrivate", "decisions", "autoAdopt",
 ]);
 
 export async function loadConfig(root) {
@@ -35,6 +35,7 @@ export async function loadConfig(root) {
     cli: raw.cli || "npx multi-agent-kit",
     commitPrivate: raw.commitPrivate === true,
     decisions: raw.decisions || null,
+    autoAdopt: raw.autoAdopt || null,
   };
 
   const badTargets = config.targets.filter((target) => !TARGETS.includes(target));

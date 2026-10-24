@@ -43,6 +43,9 @@ Two npm packages come from this repository:
 | `src/collect.mjs` | lists pack items, applies `packs` / `include` / `exclude` / local layer, `pack.json` var defaults |
 | `src/sync.mjs` | renders `{{mak.*}}` / `{{vars.*}}`, maps items to platform files, manifests, stale files, private exclude, `check` |
 | `src/adopt.mjs` | copies a hand edit of a generated file back to its source |
+| `src/catalog.mjs` | everything the sources offer and the state of each item (`list`) |
+| `src/discover.mjs` | items added by hand to platform folders, with no source and no marker |
+| `src/manage.mjs` | config edits: `enable`, `disable`, `adopt --new`, `delete` |
 | `src/lint.mjs` | pack validation: frontmatter, description ≤ 1024, links, secrets, deny list, vars without defaults |
 | `src/decisions.mjs` | numbered RFC / ADR / OPS documents and `ACTIVE.md` |
 | `src/create.mjs`, `src/init.mjs` | `create` (project template), `new-kit` (kit template), `init` (config for an existing project) |
@@ -60,7 +63,8 @@ npm run lint                              # lint the public packs
 node bin/multi-agent-kit.mjs <command>    # run the CLI from a checkout
 ```
 
-CLI: `sync [--check] [--update] [--take-over]`, `check`, `list`, `adopt <file>…`,
+CLI: `sync [--check] [--update] [--take-over]`, `check`, `list [--long] [--json]`, `enable`, `disable`,
+`adopt <file>…`, `adopt --new [--to]`, `delete <item> [--yes]`,
 `lint [dir] [--deny file]`, `decisions create|index`, `init`, `create <dir>`, `new-kit <dir> [--public]`.
 
 ## Typical tasks
@@ -98,6 +102,10 @@ CLI: `sync [--check] [--update] [--take-over]`, `check`, `list`, `adopt <file>�
 | Existing project with hand-copied skills | write the config, then `npx multi-agent-kit sync --take-over`: copies equal to the source are taken over, the rest are listed — for each, keep the project version with `adopt` or delete the file to take the source version |
 | Project with the old `sync-agent-kit.mjs` | `npx multi-agent-kit init` reuses `workspace/agent-kit/` as the local layer and its `project.json` for decisions; old generated files are recognised by their marker |
 | Team or personal skills | `npx multi-agent-kit new-kit <dir>`, push to a private repo, add it to `sources` (see `docs/private-and-team-kits.md`) |
+| "Which skills can I use?" | `npx multi-agent-kit list --long`: every source, `[x]` enabled packs, `on` / `ex` / `ovr` per item |
+| "Turn this on / off" | `npx multi-agent-kit enable <pack\|item>` / `disable <pack\|item>` (edits the config and syncs) |
+| A skill was created right in `.claude/skills/` | `sync` reports it; `npx multi-agent-kit adopt --new [--to source:pack]` moves it into a layer for every tool; `"autoAdopt"` does it on each sync |
+| "Remove this skill everywhere" | `npx multi-agent-kit delete <item>` shows the plan; run with `--yes` only after the user agrees; read-only sources get an `exclude` instead |
 | "I edited a generated file" | `npx multi-agent-kit adopt <file>`, then `sync` |
 | "Where does this file come from?" | the `Source:` part of its marker, or `npx multi-agent-kit list` |
 | CI | `npx multi-agent-kit check` |

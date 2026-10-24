@@ -65,6 +65,7 @@ multi-agent-kit.json ──► sources ──► packs ──► local layer ─
 | `vars` | values for `{{vars.name}}` in pack files (defaults come from `pack.json`) |
 | `decisions` | enables the RFC / ADR / OPS workflow and `multi-agent-kit decisions` |
 | `commitPrivate` | commit files from private sources too (default: keep them out of git) |
+| `autoAdopt` | `"local"` or `"source:pack"`: move items added by hand into that layer on every `sync` |
 
 ### Public and private layers
 
@@ -80,7 +81,31 @@ Team process, internal services and personal notes live in kits: separate (usual
 repositories with the same format. Start one with `npx multi-agent-kit new-kit acme-team-kit` and
 follow [docs/private-and-team-kits.md](docs/private-and-team-kits.md).
 
+### Choosing what a project gets
+
+Nothing is on by default except the `core` pack. See what every source offers and switch packs or
+single items:
+
+```bash
+npx multi-agent-kit list --long        # [x] enabled packs, on / ex / ovr per item
+npx multi-agent-kit enable growth      # a whole pack
+npx multi-agent-kit enable seogeo      # one skill from a pack that stays off
+npx multi-agent-kit disable octalysis  # drop one skill
+```
+
 ### Edit anywhere, keep one source
+
+A skill created right in `.claude/skills/` (by you or by an agent) is picked up by `sync`, which lists
+it as added by hand. Move it into a layer and every tool gets it:
+
+```bash
+npx multi-agent-kit adopt --new                      # into the project's local layer
+npx multi-agent-kit adopt --new --to acme-kit:team   # into a team kit: other projects get it on sync --update
+```
+
+Set `"autoAdopt": "local"` (or a `source:pack`) in the config to do this on every `sync`. To remove
+an item everywhere — sources you can write to, generated files and hand-made copies:
+`npx multi-agent-kit delete <item>` shows the plan, `--yes` does it.
 
 Edit a generated file by hand, then move the change back to where it came from:
 
@@ -95,10 +120,13 @@ clone: `{ "package": "multi-agent-kit", "path": "~/code/multi-agent-kit" }`.
 
 | Command | What it does |
 |---------|--------------|
-| `sync [--update]` | generate files; `--update` refreshes git sources |
+| `sync [--update] [--take-over]` | generate files; `--update` refreshes git sources; reports items added by hand |
 | `check` | CI mode: fails when generated files are stale or private files are tracked |
-| `list` | sources, packs and items in use |
-| `adopt <file>…` | copy hand edits back to the source |
+| `list [--long] [--enabled] [--json]` | catalog of every source (public, team, private): packs, items and their state here |
+| `enable <pack\|item>` / `disable <pack\|item>` | turn a pack or one skill/agent/rule on or off, then sync |
+| `adopt <file>…` | copy hand edits of generated files back to the source |
+| `adopt --new [--to local\|source:pack]` | move skills/agents/rules added by hand into a layer and generate them for every tool |
+| `delete <item> [--yes]` | remove an item from writable sources, outputs and hand-made copies (preview without `--yes`) |
 | `lint [dir] [--deny file]` | validate packs: metadata, links, secrets, denied words |
 | `decisions create TYPE scope topic` / `decisions index` | numbered RFC / ADR / OPS documents |
 | `init` | create `multi-agent-kit.json` (reuses a legacy `agent-kit/` folder) |

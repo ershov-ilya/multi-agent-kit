@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "./config.mjs";
 import { collect, fileLabel } from "./collect.mjs";
+import { discover } from "./discover.mjs";
 import { resolveSources } from "./sources.mjs";
 import { exists, git, parseFrontmatter, toPosix } from "./util.mjs";
 
@@ -59,7 +60,7 @@ function codexAgent(label, markdown) {
   return `${lines.join("\n")}\n`;
 }
 
-async function owned(filePath) {
+export async function isOwned(filePath) {
   if (!await exists(filePath)) return false;
   const content = await readFile(filePath, "utf8");
   if ([marker, ...legacyMarkers].some((text) => content.includes(text))) return true;
@@ -254,15 +255,15 @@ async function findStale(root, outputs, activeRoots) {
       if (!oldFile.startsWith(`${platformRoot}/`) || oldFile.split("/").includes("..") || path.isAbsolute(oldFile)) {
         throw new Error(`Unsafe manifest path: ${oldFile}`);
       }
-      if (!outputs.has(oldFile) && await owned(path.join(root, oldFile))) stale.push(oldFile);
+      if (!outputs.has(oldFile) && await isOwned(path.join(root, oldFile))) stale.push(oldFile);
     }
     const manifest = `${platformRoot}/${MANIFEST}`;
-    if (!activeRoots.includes(platformRoot) && await owned(path.join(root, manifest))) stale.push(manifest);
+    if (!activeRoots.includes(platformRoot) && await isOwned(path.join(root, manifest))) stale.push(manifest);
   }
   for (const oldFile of await readManifest(root, PRIVATE_MANIFEST)) {
     if (!ALL_ROOTS.some((platformRoot) => oldFile.startsWith(`${platformRoot}/`)) && ![".mcp.json"].includes(oldFile)) continue;
     if (oldFile.split("/").includes("..")) continue;
-    if (!outputs.has(oldFile) && !stale.includes(oldFile) && await owned(path.join(root, oldFile))) stale.push(oldFile);
+    if (!outputs.has(oldFile) && !stale.includes(oldFile) && await isOwned(path.join(root, oldFile))) stale.push(oldFile);
   }
   return stale;
 }
@@ -290,7 +291,7 @@ export async function sync(root, { check = false, update = false, takeOver = fal
   for (const [relative, output] of outputs) {
     const destination = path.join(root, relative);
     const actual = await exists(destination) ? await readFile(destination, "utf8") : undefined;
-    if (actual !== undefined && actual !== output.content && relative !== "AGENTS.md" && !await owned(destination)) {
+    if (actual !== undefined && actual !== output.content && relative !== "AGENTS.md" && !await isOwned(destination)) {
       if (takeOver && actual === stripMarker(output.content)) takenOver.push(relative);
       else conflicts.push(relative);
     }
@@ -306,8 +307,9 @@ export async function sync(root, { check = false, update = false, takeOver = fal
   const privateFiles = [...outputs].filter(([, output]) => output.private).map(([file]) => file);
   const context = gitContext(root);
   const trackedPrivate = context && !config.commitPrivate ? trackedFiles(root, privateFiles) : [];
+  const discovered = await discover(root, outputs, config.targets);
 
-  if (check) return { ...result, changed, stale, trackedPrivate, takenOver, written: false };
+  if (check) return { ...result, changed, stale, trackedPrivate, takenOver, discovered, written: false };
 
   for (const relative of stale) await rm(path.join(root, relative));
   for (const relative of changed) {
@@ -320,5 +322,5 @@ export async function sync(root, { check = false, update = false, takeOver = fal
   await writeFile(path.join(stateDirectory, ".gitignore"), "*\n", "utf8");
   await writeFile(path.join(root, PRIVATE_MANIFEST), `${JSON.stringify({ files: privateFiles.sort() }, null, 2)}\n`, "utf8");
   if (context) await updateExclude(context, privateFiles);
-  return { ...result, changed, stale, trackedPrivate, takenOver, written: true };
+  return { ...result, changed, stale, trackedPrivate, takenOver, discovered, written: true };
 }

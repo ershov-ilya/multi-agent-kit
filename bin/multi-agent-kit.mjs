@@ -3,6 +3,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { adopt } from "../src/adopt.mjs";
+import { catalog } from "../src/catalog.mjs";
+import { discover } from "../src/discover.mjs";
+import { adoptNew, disable, enable, remove } from "../src/manage.mjs";
 import { create, createKit } from "../src/create.mjs";
 import { decisions } from "../src/decisions.mjs";
 import { init } from "../src/init.mjs";
@@ -17,8 +20,17 @@ Usage:
                                               generate agent files from multi-agent-kit.json;
                                               --take-over adopts hand-made copies equal to their source
   multi-agent-kit check                       same as sync --check
-  multi-agent-kit list                        show sources, packs and items in use
+  multi-agent-kit list [--enabled] [--long] [--json]
+                                              catalog of all sources (public, team, private), packs and
+                                              items with their state in this project
+  multi-agent-kit enable <pack|item>          turn a pack or a single skill/agent/rule on, then sync
+  multi-agent-kit disable <pack|item>         turn it off, then sync
   multi-agent-kit adopt <file>...             copy hand edits of generated files back to their source
+  multi-agent-kit adopt --new [name...] [--to local|source:pack] [--from .claude]
+                                              move skills/agents/rules added by hand into a layer and
+                                              generate them for every tool
+  multi-agent-kit delete <item> [--yes]       remove an item from writable sources, outputs and copies;
+                                              without --yes only shows what would be removed
   multi-agent-kit lint [dir] [--deny file]    validate packs (default: ./packs or the local layer)
   multi-agent-kit decisions create TYPE scope topic [--adr NNNN] | decisions index
   multi-agent-kit init                        create multi-agent-kit.json in this project
@@ -52,6 +64,50 @@ function assertNoOptions(args) {
   if (unknown.length) throw new Error(`Unknown option: ${unknown.join(", ")}`);
 }
 
+function truncate(text, length) {
+  return text.length > length ? `${text.slice(0, length - 1)}…` : text;
+}
+
+function printCatalog({ sources, packs, entries }, discovered, { enabledOnly, long }) {
+  const mark = { on: "on ", off: "   ", excluded: "ex ", overridden: "ovr" };
+  for (const source of sources) {
+    console.log(`\n${source.id} — ${source.private ? "private" : "public"}, ${source.mode} ${source.directory}`);
+    for (const pack of packs.filter((candidate) => candidate.source === source.id)) {
+      const items = entries.filter((entry) => entry.layer === pack.label && (!enabledOnly || entry.status === "on"));
+      if (enabledOnly && !pack.enabled && !items.length) continue;
+      console.log(`  [${pack.enabled ? "x" : " "}] ${pack.name}${pack.description ? ` — ${truncate(pack.description, 90)}` : ""}`);
+      for (const entry of items) {
+        const note = entry.status === "overridden" ? ` (replaced by ${entry.overriddenBy})` : "";
+        const description = long && entry.description ? ` — ${truncate(entry.description, 110)}` : "";
+        console.log(`        ${mark[entry.status]} ${entry.id}${note}${description}`);
+      }
+    }
+  }
+  const local = entries.filter((entry) => entry.source === "local");
+  if (local.length) {
+    console.log(`\n${local[0].layer} — this project's own layer`);
+    for (const entry of local) console.log(`        on  ${entry.id}${long && entry.description ? ` — ${truncate(entry.description, 110)}` : ""}`);
+  }
+  if (discovered.length) {
+    console.log("\nnot managed yet (added by hand):");
+    for (const item of discovered) console.log(`        new ${item.id} — ${item.copies.map((copy) => copy.location).join(", ")}`);
+  }
+  console.log("\non = in use, ex = excluded, ovr = replaced by a later layer, [x] = pack enabled");
+  console.log('change: multi-agent-kit enable|disable <pack|item>; take new ones: multi-agent-kit adopt --new');
+}
+
+function reportDiscovered(discovered, config) {
+  if (!discovered.length) return;
+  console.log(`found ${discovered.length} item(s) added by hand: ${discovered.map((item) => item.id).join(", ")}`);
+  const where = config.local ? `the local layer (${config.local})` : "a pack (--to source:pack)";
+  console.log(`move them to ${where} and generate them for every tool: multi-agent-kit adopt --new${config.local ? "" : " --to <source:pack>"}`);
+}
+
+function reportAdoption({ adopted, skipped }) {
+  for (const item of adopted) console.log(`adopted  ${item.id}: ${item.from} -> ${item.to}`);
+  for (const item of skipped) console.log(`skipped  ${item.id}: ${item.reason}`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args.shift();
@@ -72,8 +128,14 @@ async function main() {
     const update = takeFlag(args, "--update");
     const takeOver = takeFlag(args, "--take-over");
     assertNoOptions(args);
-    const result = await sync(root, { check, update, takeOver });
+    let result = await sync(root, { check, update, takeOver });
+    if (!check && result.config.autoAdopt && result.discovered.length) {
+      const adoption = await adoptNew(root, { to: result.config.autoAdopt });
+      reportAdoption(adoption);
+      result = await sync(root, { check, takeOver });
+    }
     if (result.takenOver.length && !check) console.log(`took over ${result.takenOver.length} hand-made copies that equal their source`);
+    reportDiscovered(result.discovered, result.config);
     for (const shadow of result.shadows) console.log(`overrides ${shadow.id}: ${shadow.by} replaces ${shadow.from}`);
     const problems = [];
     if (result.trackedPrivate.length) {
@@ -102,21 +164,62 @@ async function main() {
   }
 
   if (command === "list") {
+    const enabledOnly = takeFlag(args, "--enabled");
+    const long = takeFlag(args, "--long");
+    const json = takeFlag(args, "--json");
     assertNoOptions(args);
-    const { sources, items } = await plan(root);
-    for (const source of sources) console.log(`source ${source.id}${source.private ? " (private)" : ""}: ${source.directory} [${source.mode}]`);
-    const grouped = new Map();
-    for (const item of items.values()) {
-      const key = item.origin.label;
-      grouped.set(key, [...(grouped.get(key) || []), item.id]);
+    const result = await catalog(root);
+    const { outputs } = await plan(root);
+    const discovered = await discover(root, outputs, result.config.targets);
+    if (json) {
+      const entries = result.entries.map(({ files, root: _root, ...entry }) => entry);
+      console.log(JSON.stringify({ sources: result.sources.map(({ id, private: hidden, mode, directory }) => ({ id, private: hidden, mode, directory })), packs: result.packs, entries, new: discovered.map(({ id, copies, identical }) => ({ id, locations: copies.map((copy) => copy.location), identical })) }, null, 2));
+      return;
     }
-    for (const [label, ids] of grouped) console.log(`\n${label}\n  ${ids.sort().join("\n  ")}`);
+    printCatalog(result, discovered, { enabledOnly, long });
+    return;
+  }
+
+  if (command === "enable" || command === "disable") {
+    assertNoOptions(args);
+    if (args.length !== 1) throw new Error(`${command} needs one pack or item, see "multi-agent-kit list"`);
+    const result = await (command === "enable" ? enable : disable)(root, args[0]);
+    console.log(result.message);
+    return;
+  }
+
+  if (command === "delete") {
+    const yes = takeFlag(args, "--yes");
+    assertNoOptions(args);
+    if (args.length !== 1) throw new Error("delete needs one item, see \"multi-agent-kit list\"");
+    const result = await remove(root, args[0], { yes });
+    for (const action of result.actions) {
+      const verb = action.type === "exclude" ? "" : action.type === "delete-source" ? "delete source " : "delete copy   ";
+      console.log(`${result.dryRun ? "would " : ""}${verb}${action.label}${action.target ? ` (${path.relative(root, action.target) || action.target})` : ""}`);
+    }
+    const shared = result.actions.filter((action) => action.shared);
+    if (shared.length) {
+      console.log(`${result.dryRun ? "this would change" : "changed"} shared sources: commit and push them; other projects drop the item on their next "sync --update"`);
+    }
+    if (result.dryRun) console.log('nothing removed yet: run again with --yes');
+    return;
+  }
+
+  if (command === "adopt" && args.includes("--new")) {
+    takeFlag(args, "--new");
+    const to = takeOption(args, "--to");
+    const from = takeOption(args, "--from");
+    assertNoOptions(args);
+    const result = await adoptNew(root, { to, from, names: args });
+    if (!result.adopted.length && !result.skipped.length) console.log("no new items found");
+    reportAdoption(result);
+    if (result.skipped.length) process.exitCode = 1;
     return;
   }
 
   if (command === "adopt") {
     assertNoOptions(args);
-    if (!args.length) throw new Error("adopt needs at least one generated file");
+    if (!args.length) throw new Error("adopt needs at least one generated file, or --new");
     const results = await adopt(root, args);
     for (const result of results) {
       console.log(`${result.status.padEnd(9)} ${result.file}${result.source ? ` -> ${result.source}` : ""}${result.message ? `: ${result.message}` : ""}`);
