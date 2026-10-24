@@ -22,7 +22,7 @@
     "multi-agent-kit.source.json"
   ],
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "lint": "node bin/multi-agent-kit.mjs lint packs"
   },
   "engines": {
