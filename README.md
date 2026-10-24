@@ -1,9 +1,6 @@
 # multi-agent-kit
 
-One source of skills, agents, rules, commands and MCP servers for **Claude Code**, **Cursor** and
-**Codex**. Write a skill once, connect the packs a project needs, and every project gets the same
-up-to-date files for all three tools. Public packs live here; your private and project-specific
-layers stay in your own repositories.
+One source of skills, agents, rules, commands and MCP servers for **Claude Code**, **Cursor** and **Codex**. Write a skill once, connect the packs a project needs, and every project gets the same up-to-date files for all three tools. Public packs live here; your private and project-specific layers stay in your own repositories.
 
 > The bundled skills are written in Russian. The engine and the pack format are language-agnostic.
 
