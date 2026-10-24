@@ -1,0 +1,19 @@
+{
+  "name": "{{project.name}}",
+  "targets": ["cursor", "claude", "codex"],
+  "sources": ["multi-agent-kit"],
+  "packs": ["core", "decisions", "product", "safety", "thinking"],
+  "local": "workspace/agent-kit",
+  "decisions": {
+    "directory": "workspace/docs/decisions",
+    "scopes": ["platform", "web", "engine"]
+  },
+  "vars": {
+    "stack": "не выбран — зафиксируйте ADR",
+    "prod_host": "не выбран — зафиксируйте ADR",
+    "domain": "не выбран",
+    "deploy_dir": "не выбран",
+    "prod_db": "не выбрана"
+  },
+  "cli": "npx multi-agent-kit"
+}

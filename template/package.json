@@ -1,0 +1,14 @@
+{
+  "name": "{{project.name}}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "agents:sync": "multi-agent-kit sync",
+    "agents:check": "multi-agent-kit check",
+    "agents:update": "multi-agent-kit sync --update",
+    "decisions": "multi-agent-kit decisions"
+  },
+  "devDependencies": {
+    "multi-agent-kit": "^{{kit.version}}"
+  }
+}
