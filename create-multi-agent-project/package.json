@@ -1,6 +1,6 @@
 {
   "name": "create-multi-agent-project",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Start a multi-agent monorepo (workspace, web, engine) wired to multi-agent-kit",
   "type": "module",
   "bin": {
@@ -10,7 +10,7 @@
     "bin"
   ],
   "dependencies": {
-    "multi-agent-kit": "^1.0.0"
+    "multi-agent-kit": "^1.0.1"
   },
   "engines": {
     "node": ">=20"
