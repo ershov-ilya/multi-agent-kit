@@ -220,6 +220,48 @@ multi-agent-kit.json ──► sources ──► packs ──► local layer ─
 | `cli` | how agents in this project should call the tool (default `npx multi-agent-kit`) |
 | `commitPrivate` | commit files from private sources too (default: keep them out of git) |
 | `autoAdopt` | `"local"` or `"source:pack"`: move items added by hand into that layer on every `sync` |
+| `subprojects` | folders with their own `multi-agent-kit.json`, synced together with this one (see below) |
+
+### Monorepos
+
+A repository with several Cursor roots (`workspace/`, `web/`, `api/`, …) keeps one config per root and
+lists the roots in the top-level config:
+
+```json
+{
+  "name": "my-app",
+  "targets": ["claude", "codex"],
+  "subprojects": [{ "path": "workspace", "scope": false }, "web", { "path": "api", "optional": true }]
+}
+```
+
+- Each subproject generates its own files (usually `"targets": ["cursor"]`) from its own `local` layer.
+- The root collects the agents, skills, commands, rules and MCP servers of every subproject, so Claude
+  Code and Codex started at the repository root see them all. Context stays in the subproject.
+- Rules of a subproject get `paths: ["<subproject>/**"]` in `.claude/rules/` and apply only to its
+  files; `"scope": false` keeps them global (for the orchestrator's folder).
+- The same item name in two subprojects is an error; the root's own local layer may override it.
+- `sync` and `check` at the root run every subproject first, then the root. `optional: true` skips a
+  subproject without a config (for example an uninitialised git submodule).
+- `adopt <file>` takes paths relative to the current folder and finds the right project;
+  `adopt --new --to <subproject>` moves a hand-made item into that subproject's layer.
+- Each project gets its own private block in the shared `.git/info/exclude`.
+
+### Skill files and duplicates
+
+Files of a skill other than markdown (scripts, assets) are copied byte for byte and keep the executable
+bit; they get no marker and no `{{…}}` substitution.
+
+Each tool also reads the folders of the others: Cursor reads `.claude/` and `.codex/` agents and
+`.claude/skills/` and `.agents/skills/`. To keep the number of copies down:
+
+- with both `cursor` and `codex` targets, skills go only to `.agents/skills/`, which both tools read;
+- for subagents Cursor prefers its own `.cursor/agents/` over the other copies;
+- in a monorepo, do not add the repository root as one more folder of a Cursor multi-root workspace,
+  or Cursor sees the root's aggregated `.claude/` copies next to each subproject's `.cursor/` files.
+
+The `AGENTS.md` workflow block is written only when `codex` is a target; Cursor and Claude Code get the
+same text as the `agent-kit-workflow` rule.
 
 ### Public and private layers
 

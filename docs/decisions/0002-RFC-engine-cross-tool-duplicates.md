@@ -1,7 +1,8 @@
 ---
 title: cross-tool-duplicates
-status: draft
+status: implemented
 created: 2026-10-25
+implementation: A and C released in 1.1.0; Cursor verification pending
 ---
 
 # RFC-0002: the same agent or skill seen twice by one tool
@@ -50,6 +51,23 @@ D. **Root aggregation into a separate folder** read only by Claude Code and Code
 ## Recommendation
 
 A + C. Implement A (one copy fewer, no loss for any tool) and document C in README and AGENTS.md.
+
+## Decision
+
+A + C, released in 1.1.0.
+
+- When both `cursor` and `codex` are targets, skills (and commands turned into skills) go only to
+  `.agents/skills/`; `.cursor/skills/` is written only for projects that target Cursor without Codex.
+  Copies left by earlier versions are removed by the next `sync` as stale files. Hand-made skills in
+  `.cursor/skills/` are not touched.
+- Subagents keep one copy per tool: Cursor prefers `.cursor/agents/`.
+- README and AGENTS.md describe the remaining duplicates and how to avoid them in multi-root
+  workspaces.
+- Test: "targets limit outputs and drop old platform files" covers the switch from `cursor` to
+  `cursor` + `codex`.
+
+If the checks below show that Cursor ignores `.agents/skills/` in some setup, revert to writing
+`.cursor/skills/` and record that in an ADR.
 
 ## Verification plan (in Cursor)
 

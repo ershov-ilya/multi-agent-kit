@@ -36,6 +36,9 @@ description: >-
 Link sibling skills by relative path (`../other-skill/SKILL.md`): all skills end up side by side
 in `skills/`, whatever pack they come from.
 
+Files other than markdown (`scripts/run.py`, images, data) are copied byte for byte: no marker, no
+variable substitution, and the executable bit is kept.
+
 ## Agents
 
 ```markdown
@@ -61,7 +64,7 @@ Pack files may use:
 | `{{mak.cli}}` | how to run the CLI (`npx multi-agent-kit` by default) |
 | `{{vars.<name>}}` | project `vars`, falling back to `pack.json` defaults |
 
-An unknown variable fails `sync`. Never put secrets into `vars`: they end up in committed files.
+Variables are replaced in markdown and JSON files only. An unknown variable fails `sync`. Never put secrets into `vars`: they end up in committed files.
 Reference environment variable names instead.
 
 ## Checks

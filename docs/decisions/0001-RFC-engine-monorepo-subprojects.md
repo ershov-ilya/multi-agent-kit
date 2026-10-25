@@ -1,8 +1,8 @@
 ---
 title: monorepo-subprojects
-status: draft
+status: implemented
 created: 2026-10-25
-implementation: on branch rfc-0001-monorepo, tests pass, not released
+implementation: released in 1.1.0
 ---
 
 # RFC-0001: multi-root monorepos
@@ -68,7 +68,7 @@ stale ones are removed and hand-made ones are never overwritten.
 - Non-markdown skill files in existing projects lose the marker comment on the next sync (they never
   should have had one).
 
-Suggested release: 1.1.0.
+Released in 1.1.0.
 
 ## Verification
 
@@ -79,6 +79,9 @@ Suggested release: 1.1.0.
   the marker; the other 10 differ only in intended reference updates; `check` passes in all nine roots.
 
 ## Open questions
+
+Not blocking; left for later releases.
+
 
 - Should `init` detect a `.code-workspace` file and write the root and subproject configs?
 - Should subprojects inherit the root's `sources` so they can enable packs without repeating them?

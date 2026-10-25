@@ -158,7 +158,20 @@ test("targets limit outputs and drop old platform files", async () => {
   const { base, project, config } = await fixture();
   const run = runner(project);
   try {
+    await writeFile(path.join(project, "multi-agent-kit.json"), JSON.stringify({ ...config, targets: ["cursor"] }));
     run(["sync"]);
+    await access(path.join(project, ".cursor/skills/nudge/SKILL.md"));
+    await access(path.join(project, ".cursor/skills/adr/SKILL.md"));
+
+    // With Codex as a target, Cursor reads skills from .agents/skills/ and its own copies go away.
+    await writeFile(path.join(project, "multi-agent-kit.json"), JSON.stringify(config));
+    run(["sync"]);
+    await assert.rejects(access(path.join(project, ".cursor/skills")));
+    await access(path.join(project, ".agents/skills/nudge/SKILL.md"));
+    await access(path.join(project, ".agents/skills/adr/SKILL.md"));
+    await access(path.join(project, ".cursor/commands/adr.md"));
+    run(["check"]);
+
     await writeFile(path.join(project, "multi-agent-kit.json"), JSON.stringify({ ...config, targets: ["claude"] }));
     run(["sync"]);
     await assert.rejects(access(path.join(project, ".cursor/skills/nudge/SKILL.md")));

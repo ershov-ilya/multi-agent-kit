@@ -115,6 +115,8 @@ export async function plan(root, options = {}) {
   const { items, shadows, defaults } = await collect(root, config, sources, options);
   const render = renderer(config, defaults);
   const targets = new Set(config.targets);
+  // Cursor also reads .agents/skills/, so with Codex as a target one copy serves both (RFC-0002).
+  const cursorSkills = targets.has("cursor") && !targets.has("codex");
   const outputs = new Map();
 
   const emit = (relative, content, meta) => {
@@ -146,7 +148,7 @@ export async function plan(root, options = {}) {
         fileMeta = { ...fileMeta, verbatim: true, executable: Boolean((await stat(file.absolute)).mode & 0o111) };
       }
       const relative = `skills/${file.relative}`;
-      if (targets.has("cursor")) emit(`.cursor/${relative}`, content, fileMeta);
+      if (cursorSkills) emit(`.cursor/${relative}`, content, fileMeta);
       if (targets.has("claude")) emit(`.claude/${relative}`, content, fileMeta);
       if (targets.has("codex")) emit(`.agents/${relative}`, content, fileMeta);
     }
@@ -173,7 +175,7 @@ export async function plan(root, options = {}) {
     const content = await read(item, file);
     if (targets.has("cursor")) emit(`.cursor/commands/${item.name}.md`, generatedMarkdown(label, content), meta(item, file));
     const skill = skillDocument(item.name, label, content);
-    if (targets.has("cursor")) emit(`.cursor/skills/${item.name}/SKILL.md`, skill, meta(item, file, false));
+    if (cursorSkills) emit(`.cursor/skills/${item.name}/SKILL.md`, skill, meta(item, file, false));
     if (targets.has("claude")) emit(`.claude/skills/${item.name}/SKILL.md`, skill, meta(item, file, false));
     if (targets.has("codex")) emit(`.agents/skills/${item.name}/SKILL.md`, skill, meta(item, file, false));
   }
