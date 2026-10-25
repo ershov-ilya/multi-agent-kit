@@ -27,11 +27,103 @@ Three ideas carry the design:
    The engine only rewrites or deletes files with that marker (or the legacy markers of the old
    per-project `sync-agent-kit.mjs`) and refuses to touch anything else.
 
-Two npm packages come from this repository:
+## Why it exists — how to explain it to a user
 
-- `multi-agent-kit` (repository root): the CLI, the public packs, the project template and the kit template.
-- `create-multi-agent-project` (`create-multi-agent-project/`): a thin wrapper for
-  `npx create-multi-agent-project my-app`.
+Say it in the user's terms, not in terms of layers:
+
+- **Problem:** good skills get copied between projects and drift apart; Claude Code, Cursor and Codex
+  each want their own file format; personal and shareable skills get mixed; a new laptop, a new
+  teammate or a new project starts from zero.
+- **What the package gives:** one place for skills (public package, team kit, private kit); each project
+  lists the packs it wants and `sync` generates the files for all three tools; an improvement made once
+  reaches every project on its next `sync`; private kits never land in a project's git; a ready project
+  template with an orchestrator, subagents and decision records.
+- **One-line pitch:** "write a skill once, use it in every project and every AI tool, keep private
+  things private".
+
+## Two packages, two jobs
+
+| | `create-multi-agent-project` | `multi-agent-kit` |
+|---|---|---|
+| Role | one-time project generator | the tool used every day |
+| Run | `npx create-multi-agent-project@latest my-app` | `npx multi-agent-kit <command>` |
+| When | only to start a **new** project folder | inside an **existing** project |
+| Effect | copies the template, adds `multi-agent-kit` to `devDependencies`, installs it, runs the first `sync` | `sync`, `check`, `list`, `enable`, `adopt`, `delete`, … |
+
+`create-multi-agent-project my-app` equals `multi-agent-kit create my-app --install`. Never run either
+inside an existing project: they create a new folder and refuse a non-empty one.
+
+## How npx resolves the command and the version
+
+`npx <package>` runs the first match from: the project's `node_modules` → a global install → npx's cache
+(`~/.npm/_npx/`) → the npm registry (download, with an "Ok to proceed?" prompt unless `-y`). A local
+clone of this repository is never used unless a source in `multi-agent-kit.json` has a `path` to it,
+or the user ran `npm link`.
+
+Rules for agents running the CLI in a project:
+
+1. **Use the command the project declares.** The managed block in the project's `AGENTS.md` and the
+   `cli` key of `multi-agent-kit.json` say how to call the tool (for example `npx -y multi-agent-kit@1`).
+   If the project has npm scripts (`agents:sync`, `agents:check`, `agents:update`), prefer them.
+2. **With `package.json` and the dev dependency**, `npx multi-agent-kit …` runs the pinned version —
+   the same for the whole team. Do not add `@latest` there.
+3. **Without `package.json`**, always pass `-y` (agents cannot answer the prompt) and a version range:
+   `npx -y multi-agent-kit@1 …`. Plain `npx -y multi-agent-kit` may reuse an old cached copy.
+4. Use `@latest` only when the user asks for the newest release or for one-off commands like
+   `create-multi-agent-project@latest`.
+
+## Which command, when
+
+| Situation | Command | Note |
+|-----------|---------|------|
+| Sources changed (a skill edited in a kit or the local layer) | `sync` | uses what is on disk and in the git cache |
+| User wants fresh team / private kits | `sync --update` | fetches git sources first |
+| Before committing, in CI | `check` | writes nothing, exit 1 when stale or private files are tracked |
+| First run in a project with hand-copied skills | `sync --take-over` | identical copies become managed, the rest are listed |
+| "What can I use?" | `list --long` (`--json` to parse) | `[x]` enabled packs; `on` / `ex` excluded / `ovr` replaced per item |
+| "Turn X on / off" | `enable X` / `disable X` | edits the config and syncs |
+| User edited a generated file | `adopt <file>` | then `sync`; writes only into sources connected by `path` |
+| A new skill/agent/rule was created in `.claude/`, `.cursor/` or `.agents/` | `adopt --new` | into the local layer; `--to source:pack` for a kit — ask first, it affects other projects |
+| "Remove X everywhere" | `delete X` | shows the plan; `--yes` only after the user agrees |
+| Team or personal kit | `new-kit <dir>` | then push to a private repo and add it to `sources` |
+| Record a decision | `decisions create ADR <scope> <topic>` | then `decisions index` |
+
+## Cheat sheet
+
+```bash
+npx create-multi-agent-project@latest my-app      # new project (once)
+npm i -D multi-agent-kit && npx multi-agent-kit init  # add to an existing Node project
+npx multi-agent-kit sync                          # regenerate agent files
+npx multi-agent-kit sync --update                 # pull git kits, then regenerate
+npx multi-agent-kit check                         # CI: fail if stale
+npx multi-agent-kit sync --take-over              # adopt hand-made copies equal to their source
+npx multi-agent-kit list --long                   # catalog with states
+npx multi-agent-kit enable growth                 # a pack
+npx multi-agent-kit enable seogeo                 # one skill
+npx multi-agent-kit disable octalysis             # drop one skill
+npx multi-agent-kit adopt .claude/skills/x/SKILL.md   # keep an edit of a generated file
+npx multi-agent-kit adopt --new [--to kit:pack]   # take items created by hand
+npx multi-agent-kit delete x [--yes]              # remove everywhere (preview first)
+npx multi-agent-kit new-kit acme-team-kit         # start a team / private kit
+npx -y multi-agent-kit@1 <command>                # in a folder without package.json
+```
+
+## Helping a user adopt multi-agent-kit
+
+| Situation | What to do |
+|-----------|------------|
+| New project | `npx create-multi-agent-project my-app`, then fill `workspace/agent-kit/context/project.md` and `vars` |
+| Existing project, no agent files yet | `npm i -D multi-agent-kit && npx multi-agent-kit init && npx multi-agent-kit sync` |
+| Existing project with hand-copied skills | write the config, then `npx multi-agent-kit sync --take-over`: copies equal to the source are taken over, the rest are listed — for each, keep the project version with `adopt` or delete the file to take the source version |
+| Project with the old `sync-agent-kit.mjs` | `npx multi-agent-kit init` reuses `workspace/agent-kit/` as the local layer and its `project.json` for decisions; old generated files are recognised by their marker |
+| A folder without `package.json` | `npx -y multi-agent-kit@1 init`, set `"cli": "npx -y multi-agent-kit@1"` in the config, then `sync` |
+| Team or personal skills | `npx multi-agent-kit new-kit <dir>`, push to a private repo, add it to `sources` (see `docs/private-and-team-kits.md`) |
+| A teammate or a new laptop | `npm install`, then `npx multi-agent-kit sync --update` (needs read access to private kits; optional ones only warn) |
+| "Where does this file come from?" | the `Source:` part of its marker, or `npx multi-agent-kit list` |
+| CI | `npx multi-agent-kit check` |
+
+When explaining, lead with the layers picture: public package → team kit → personal kit → project's
+own folder → generated files for each tool.
 
 ## Repository map
 
@@ -55,7 +147,7 @@ Two npm packages come from this repository:
 | `docs/` | `pack-format.md`, `private-and-team-kits.md` |
 | `test/engine.test.mjs` | end-to-end tests through the CLI |
 
-## Commands
+## Working on this repository
 
 ```bash
 npm test                                  # all tests (node:test, no dependencies)
@@ -92,26 +184,6 @@ CLI: `sync [--check] [--update] [--take-over]`, `check`, `list [--long] [--json]
 `{{project.name}}` and `{{kit.version}}` (replaced at creation), `{{mak.*}}` / `{{vars.*}}` in
 `template/workspace/agent-kit/` (rendered by every `sync`), `_gitignore` for `.gitignore` and
 `__project__` in file names. The `create` test must keep passing.
-
-## Helping a user adopt multi-agent-kit
-
-| Situation | What to do |
-|-----------|------------|
-| New project | `npx create-multi-agent-project my-app`, then fill `workspace/agent-kit/context/project.md` and `vars` |
-| Existing project, no agent files yet | `npm i -D multi-agent-kit && npx multi-agent-kit init && npx multi-agent-kit sync` |
-| Existing project with hand-copied skills | write the config, then `npx multi-agent-kit sync --take-over`: copies equal to the source are taken over, the rest are listed — for each, keep the project version with `adopt` or delete the file to take the source version |
-| Project with the old `sync-agent-kit.mjs` | `npx multi-agent-kit init` reuses `workspace/agent-kit/` as the local layer and its `project.json` for decisions; old generated files are recognised by their marker |
-| Team or personal skills | `npx multi-agent-kit new-kit <dir>`, push to a private repo, add it to `sources` (see `docs/private-and-team-kits.md`) |
-| "Which skills can I use?" | `npx multi-agent-kit list --long`: every source, `[x]` enabled packs, `on` / `ex` / `ovr` per item |
-| "Turn this on / off" | `npx multi-agent-kit enable <pack\|item>` / `disable <pack\|item>` (edits the config and syncs) |
-| A skill was created right in `.claude/skills/` | `sync` reports it; `npx multi-agent-kit adopt --new [--to source:pack]` moves it into a layer for every tool; `"autoAdopt"` does it on each sync |
-| "Remove this skill everywhere" | `npx multi-agent-kit delete <item>` shows the plan; run with `--yes` only after the user agrees; read-only sources get an `exclude` instead |
-| "I edited a generated file" | `npx multi-agent-kit adopt <file>`, then `sync` |
-| "Where does this file come from?" | the `Source:` part of its marker, or `npx multi-agent-kit list` |
-| CI | `npx multi-agent-kit check` |
-
-When explaining, lead with the layers picture: public package → team kit → personal kit → project's
-own folder → generated files for each tool.
 
 ## Rules
 
