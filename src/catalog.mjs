@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { collect, excluded, findPack, indexPacks, layerItems, localOrigin, packMeta, packOrigin } from "./collect.mjs";
+import { collect, excluded, findPack, indexPacks, layerItems, localOrigin, packMeta, packOrigin, subprojectLayers } from "./collect.mjs";
 import { loadConfig } from "./config.mjs";
 import { resolveSources } from "./sources.mjs";
 import { isDirectory, parseFrontmatter } from "./util.mjs";
@@ -58,6 +58,11 @@ export async function catalog(root, options = {}) {
     const meta = await packMeta(pack.directory);
     packList.push({ label, source: pack.source.id, name: pack.name, enabled: enabled.has(label), private: pack.source.private, description: meta.description || "" });
     for (const item of await layerItems(pack.directory, packOrigin(pack))) await add(item, enabled.has(label));
+  }
+  for (const layer of await subprojectLayers(root, config, () => {})) {
+    for (const item of await layerItems(layer.directory, layer.origin)) {
+      if (item.kind !== "context") await add(item, true);
+    }
   }
   if (config.local && await isDirectory(path.join(root, config.local))) {
     for (const item of await layerItems(path.join(root, config.local), localOrigin(root, config))) await add(item, true);

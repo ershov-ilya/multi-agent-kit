@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { CONFIG_FILE, loadConfig } from "./config.mjs";
 import { exists, filesRecursively, isDirectory, subdirectories, toPosix } from "./util.mjs";
 
 // pack.json may hold defaults for {{vars.*}}: the project's multi-agent-kit.json overrides them.
@@ -74,8 +75,35 @@ export function findPack(packs, reference) {
 
 export const excluded = (item, patterns) => patterns.some((pattern) => pattern === item.id || pattern === item.name);
 
-// Later layers win: packs follow source order, then config order; single includes and the local layer come last.
-export async function collect(root, config, sources) {
+export async function subprojectLayers(root, config, warn = console.warn) {
+  const layers = [];
+  for (const subproject of config.subprojects) {
+    const subRoot = path.join(root, subproject.path);
+    if (!await exists(path.join(subRoot, CONFIG_FILE))) {
+      if (subproject.optional) {
+        warn(`multi-agent-kit: skipped optional subproject ${subproject.path}: no ${CONFIG_FILE}`);
+        continue;
+      }
+      throw new Error(`Subproject ${subproject.path} has no ${CONFIG_FILE}`);
+    }
+    const subConfig = await loadConfig(subRoot);
+    if (!subConfig.local) throw new Error(`Subproject ${subproject.path} has no "local" layer in its ${CONFIG_FILE}`);
+    const directory = path.join(subRoot, subConfig.local);
+    const label = `sub:${toPosix(path.join(subproject.path, subConfig.local))}`;
+    layers.push({
+      path: subproject.path,
+      root: subRoot,
+      directory,
+      vars: subConfig.vars,
+      origin: { source: "sub", pack: null, private: false, root: directory, label, writable: true, scope: subproject.scope === false ? null : subproject.path },
+    });
+  }
+  return layers;
+}
+
+// Later layers win: packs follow source order, then config order; single includes, subprojects and
+// the local layer come last.
+export async function collect(root, config, sources, { warn = console.warn } = {}) {
   const packs = await indexPacks(sources);
   const selected = config.packs.map((reference, position) => ({ pack: findPack(packs, reference), position }));
   selected.sort((left, right) => left.pack.order - right.pack.order || left.position - right.position);
@@ -109,6 +137,19 @@ export async function collect(root, config, sources) {
     if (!item) throw new Error(`Include not found: ${reference}`);
     Object.assign(defaults, (await packMeta(pack.directory)).vars);
     put(item);
+  }
+  // Subprojects of a monorepo lend their local layer to the root, so tools started at the root see
+  // every agent, skill, command and rule. Context stays with the subproject that owns it.
+  for (const layer of await subprojectLayers(root, config, warn)) {
+    Object.assign(defaults, layer.vars);
+    for (const item of await layerItems(layer.directory, layer.origin)) {
+      if (item.kind === "context") continue;
+      const previous = items.get(item.id);
+      if (previous?.origin.source === "sub") {
+        throw new Error(`${item.id} is defined in both ${previous.origin.label} and ${item.origin.label}; rename one of them`);
+      }
+      put(item);
+    }
   }
   if (config.local) {
     const localRoot = path.join(root, config.local);

@@ -18,13 +18,14 @@ export async function adopt(root, files) {
       results.push({ file: relative, status: "error", message: "this output is converted from its source; edit the source .md instead" });
       continue;
     }
-    const actual = await exists(path.join(root, relative)) ? await readFile(path.join(root, relative), "utf8") : null;
-    if (actual === null || actual === output.content) {
+    const present = await exists(path.join(root, relative));
+    const actual = present ? await readFile(path.join(root, relative), output.verbatim ? undefined : "utf8") : null;
+    if (actual === null || (output.verbatim ? actual.equals(output.content) : actual === output.content)) {
       results.push({ file: relative, status: "unchanged" });
       continue;
     }
     const source = await readFile(output.source.absolute, "utf8");
-    if (/\{\{\s*(mak|vars)\./.test(source)) {
+    if (!output.verbatim && /\{\{\s*(mak|vars)\./.test(source)) {
       results.push({ file: relative, status: "error", message: `${output.source.label} uses template variables; copy the edit by hand` });
       continue;
     }
@@ -36,7 +37,7 @@ export async function adopt(root, files) {
       });
       continue;
     }
-    await writeFile(output.source.absolute, stripMarker(actual), "utf8");
+    await writeFile(output.source.absolute, output.verbatim ? actual : stripMarker(actual));
     results.push({ file: relative, status: "adopted", source: output.source.absolute });
   }
   return results;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -410,6 +410,113 @@ test("delete removes an item from writable sources, outputs and copies", async (
     assert.ok(JSON.parse(await readFile(path.join(project, "multi-agent-kit.json"), "utf8")).exclude.includes("skills/founder"));
     await access(path.join(privateKit, "packs/personal/skills/founder/SKILL.md"));
     run(["check"]);
+  } finally {
+    await rm(base, { recursive: true });
+  }
+});
+
+test("a monorepo root aggregates subprojects and syncs them recursively", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "multi-agent-kit-mono-"));
+  const run = runner(base);
+  const read = (relative) => readFile(path.join(base, relative), "utf8");
+  try {
+    await write(base, "multi-agent-kit.json", JSON.stringify({
+      name: "mono",
+      targets: ["claude", "codex"],
+      sources: [],
+      packs: [],
+      subprojects: [{ path: "workspace", scope: false }, "web", { path: "api", optional: true }],
+    }));
+    await write(base, "workspace/multi-agent-kit.json", JSON.stringify({ name: "workspace", targets: ["cursor"], sources: [], packs: [], local: "agent-kit" }));
+    await write(base, "workspace/agent-kit/agents/orchestrator.mdc", "---\ndescription: Orchestrator\nalwaysApply: true\n---\n\nDelegate.\n");
+    await write(base, "workspace/agent-kit/agents/devops.md", "---\nname: devops\ndescription: Deploys\n---\n\nDeploy.\n");
+    await write(base, "workspace/agent-kit/context/project.md", "# Workspace context\n");
+    await write(base, "workspace/agent-kit/mcp/memory.json", '{ "mcpServers": { "memory": { "url": "http://127.0.0.1:1/mcp" } } }');
+    await write(base, "web/multi-agent-kit.json", JSON.stringify({ name: "web", targets: ["cursor"], sources: [], packs: [], local: "agent-kit" }));
+    await write(base, "web/agent-kit/agents/web-subagent.md", "---\nname: web-subagent\ndescription: UI\n---\n\nRead .cursor/context/project.md.\n");
+    await write(base, "web/agent-kit/context/project.md", "# Web context\n");
+    await write(base, "web/agent-kit/rules/ui.mdc", "---\ndescription: UI rule\nalwaysApply: true\n---\n\nUse tokens.\n");
+    await write(base, "web/agent-kit/skills/tool/SKILL.md", "---\nname: tool\ndescription: Tool\n---\n\nRun scripts/run.py.\n");
+    await write(base, "web/agent-kit/skills/tool/scripts/run.py", "#!/usr/bin/env python3\nprint('{{not a variable}}')\n");
+    await chmod(path.join(base, "web/agent-kit/skills/tool/scripts/run.py"), 0o755);
+    spawnSync("git", ["init", "-q"], { cwd: base });
+
+    const output = run(["sync"]);
+    assert.match(output, /skipped optional subproject api/);
+    assert.match(output, /workspace: multi-agent-kit: \d+ files/);
+    assert.match(output, /web: multi-agent-kit: \d+ files/);
+    assert.match(output, /\(root\) multi-agent-kit: \d+ files/);
+
+    // Cursor keeps each subproject's own files in its own root.
+    assert.match(await read("web/.cursor/agents/web-subagent.md"), /Read \.cursor\/context\/project\.md/);
+    assert.match(await read("web/.cursor/context/project.md"), /Web context/);
+    assert.match(await read("workspace/.cursor/rules/orchestrator.mdc"), /Delegate/);
+    assert.match(await read("workspace/.cursor/mcp.json"), /memory/);
+    await assert.rejects(access(path.join(base, "web/AGENTS.md")));
+
+    // The root gets every subproject's agents, skills and rules for Claude Code and Codex.
+    assert.match(await read(".claude/agents/web-subagent.md"), /Source: sub:web\/agent-kit\/agents\/web-subagent\.md/);
+    await access(path.join(base, ".claude/agents/devops.md"));
+    await access(path.join(base, ".codex/agents/web-subagent.toml"));
+    assert.match(await read(".claude/rules/ui.md"), /^---\ndescription: UI rule\nalwaysApply: true\npaths:\n  - "web\/\*\*"\n---\n/);
+    assert.doesNotMatch(await read(".claude/rules/orchestrator.md"), /paths:/);
+    assert.equal(JSON.parse(await read(".mcp.json")).mcpServers.memory.type, "http");
+    await assert.rejects(access(path.join(base, ".claude/context")));
+
+    // Scripts are copied byte for byte and stay executable.
+    const script = path.join(base, ".agents/skills/tool/scripts/run.py");
+    assert.equal(await readFile(script, "utf8"), "#!/usr/bin/env python3\nprint('{{not a variable}}')\n");
+    assert.ok((await stat(script)).mode & 0o100);
+    assert.equal(await read("web/.cursor/skills/tool/scripts/run.py"), "#!/usr/bin/env python3\nprint('{{not a variable}}')\n");
+
+    assert.match(run(["check"]), /\(root\) multi-agent-kit: up to date/);
+
+    // Private files of a subproject and of the root are excluded side by side in one repository.
+    const privateKit = path.join(base, "private-kit");
+    await write(privateKit, "multi-agent-kit.source.json", '{ "id": "me", "private": true }');
+    await write(privateKit, "packs/notes/skills/secret/SKILL.md", "---\nname: secret\ndescription: Secret\n---\n");
+    for (const file of ["multi-agent-kit.json", "workspace/multi-agent-kit.json"]) {
+      const current = JSON.parse(await read(file));
+      await writeFile(path.join(base, file), JSON.stringify({ ...current, sources: [{ path: file.includes("/") ? "../private-kit" : "private-kit" }], packs: ["notes"] }));
+    }
+    run(["sync"]);
+    const exclude = await read(".git/info/exclude");
+    assert.match(exclude, /\/workspace\/\.cursor\/skills\/secret\/SKILL\.md/);
+    assert.match(exclude, /^\/\.claude\/skills\/secret\/SKILL\.md$/m);
+    const status = spawnSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: base, encoding: "utf8" }).stdout;
+    assert.doesNotMatch(status, /\.(claude|cursor|agents)\/skills\/secret/);
+    await writeFile(path.join(base, "web/agent-kit/rules/ui.mdc"), "---\ndescription: UI rule\nalwaysApply: true\n---\n\nUse design tokens.\n");
+    assert.match(run(["check"], false), /web: agent files are out of date/);
+    run(["sync"]);
+
+    // Removing a script from the source removes its generated copies too.
+    await rm(path.join(base, "web/agent-kit/skills/tool/scripts"), { recursive: true });
+    run(["sync"]);
+    await assert.rejects(access(script));
+    await assert.rejects(access(path.join(base, "web/.cursor/skills/tool/scripts/run.py")));
+    await assert.rejects(access(path.join(base, ".agents/skills/tool/scripts")), "empty folders are pruned");
+
+    // From the root: adopt an edit of a subproject file, take a hand-made skill into a subproject.
+    const generated = path.join(base, "web/.cursor/agents/web-subagent.md");
+    await writeFile(generated, (await readFile(generated, "utf8")).replace("Read .cursor", "First read .cursor"));
+    assert.match(run(["adopt", "web/.cursor/agents/web-subagent.md"]), /adopted/);
+    assert.match(await read("web/agent-kit/agents/web-subagent.md"), /First read/);
+    await write(base, ".claude/skills/handmade/SKILL.md", "---\nname: handmade\ndescription: Handmade\n---\n\nBy hand.\n");
+    assert.match(run(["adopt", "--new"], false), /--to <subproject> \(workspace, web, api\)/);
+    assert.match(run(["adopt", "--new", "--to", "web"]), /adopted  skills\/handmade: \.claude\/skills -> sub:web\/agent-kit/);
+    await access(path.join(base, "web/agent-kit/skills/handmade/SKILL.md"));
+    assert.match(await read("web/.cursor/skills/handmade/SKILL.md"), /Source: local:agent-kit/);
+    assert.match(await read(".claude/skills/handmade/SKILL.md"), /Source: sub:web\/agent-kit/);
+    run(["delete", "handmade", "--yes"]);
+    await assert.rejects(access(path.join(base, "web/.cursor/skills/handmade")));
+    await assert.rejects(access(path.join(base, ".claude/skills/handmade")));
+    assert.match(run(["check"]), /web: multi-agent-kit: up to date/);
+
+    const listed = JSON.parse(spawnSync(process.execPath, [cli, "list", "--json"], { cwd: base, encoding: "utf8" }).stdout);
+    assert.ok(listed.entries.some((entry) => entry.layer === "sub:web/agent-kit" && entry.id === "agents/web-subagent" && entry.status === "on"));
+
+    await write(base, "workspace/agent-kit/agents/web-subagent.md", "---\nname: web-subagent\ndescription: Dup\n---\n");
+    assert.match(run(["sync"], false), /agents\/web-subagent is defined in both/);
   } finally {
     await rm(base, { recursive: true });
   }

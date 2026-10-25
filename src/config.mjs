@@ -6,7 +6,7 @@ export const CONFIG_FILE = "multi-agent-kit.json";
 export const TARGETS = ["cursor", "claude", "codex"];
 const KNOWN_KEYS = new Set([
   "$schema", "name", "targets", "sources", "packs", "include", "exclude",
-  "local", "vars", "cli", "commitPrivate", "decisions", "autoAdopt",
+  "local", "vars", "cli", "commitPrivate", "decisions", "autoAdopt", "subprojects",
 ]);
 
 export async function loadConfig(root) {
@@ -36,6 +36,7 @@ export async function loadConfig(root) {
     commitPrivate: raw.commitPrivate === true,
     decisions: raw.decisions || null,
     autoAdopt: raw.autoAdopt || null,
+    subprojects: (raw.subprojects || []).map((entry) => (typeof entry === "string" ? { path: entry } : entry)),
   };
 
   const badTargets = config.targets.filter((target) => !TARGETS.includes(target));
@@ -45,6 +46,11 @@ export async function loadConfig(root) {
   }
   if (config.local !== null && (typeof config.local !== "string" || path.isAbsolute(config.local) || config.local.split(/[\\/]/).includes(".."))) {
     throw new Error(`${CONFIG_FILE}: "local" must be a path inside the project`);
+  }
+  for (const subproject of config.subprojects) {
+    if (!subproject || typeof subproject.path !== "string" || path.isAbsolute(subproject.path) || subproject.path.split(/[\\/]/).includes("..")) {
+      throw new Error(`${CONFIG_FILE}: every "subprojects" entry needs a "path" inside the project`);
+    }
   }
   if (config.decisions) {
     const { directory, scopes } = config.decisions;

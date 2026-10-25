@@ -42,6 +42,9 @@ export async function subdirectories(directory) {
 
 export const toPosix = (filePath) => filePath.split(path.sep).join("/");
 
+// Markdown gets a generated marker and template variables; every other file is copied byte for byte.
+export const isMarkdown = (filePath) => /\.(md|mdc)$/i.test(filePath);
+
 export function expandHome(filePath) {
   if (filePath === "~") return os.homedir();
   if (filePath.startsWith("~/")) return path.join(os.homedir(), filePath.slice(2));

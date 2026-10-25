@@ -6,6 +6,8 @@ import { adopt } from "../src/adopt.mjs";
 import { catalog } from "../src/catalog.mjs";
 import { discover } from "../src/discover.mjs";
 import { adoptNew, disable, enable, remove } from "../src/manage.mjs";
+import { CONFIG_FILE, loadConfig } from "../src/config.mjs";
+import { exists } from "../src/util.mjs";
 import { create, createKit } from "../src/create.mjs";
 import { decisions } from "../src/decisions.mjs";
 import { init } from "../src/init.mjs";
@@ -83,10 +85,13 @@ function printCatalog({ sources, packs, entries }, discovered, { enabledOnly, lo
       }
     }
   }
-  const local = entries.filter((entry) => entry.source === "local");
-  if (local.length) {
-    console.log(`\n${local[0].layer} — this project's own layer`);
-    for (const entry of local) console.log(`        on  ${entry.id}${long && entry.description ? ` — ${truncate(entry.description, 110)}` : ""}`);
+  const own = entries.filter((entry) => entry.source === "local" || entry.source === "sub");
+  for (const layer of [...new Set(own.map((entry) => entry.layer))]) {
+    console.log(`\n${layer} — ${layer.startsWith("sub:") ? "subproject layer" : "this project's own layer"}`);
+    for (const entry of own.filter((candidate) => candidate.layer === layer)) {
+      const note = entry.status === "overridden" ? ` (replaced by ${entry.overriddenBy})` : "";
+      console.log(`        ${mark[entry.status]} ${entry.id}${note}${long && entry.description ? ` — ${truncate(entry.description, 110)}` : ""}`);
+    }
   }
   if (discovered.length) {
     console.log("\nnot managed yet (added by hand):");
@@ -99,13 +104,49 @@ function printCatalog({ sources, packs, entries }, discovered, { enabledOnly, lo
 function reportDiscovered(discovered, config) {
   if (!discovered.length) return;
   console.log(`found ${discovered.length} item(s) added by hand: ${discovered.map((item) => item.id).join(", ")}`);
-  const where = config.local ? `the local layer (${config.local})` : "a pack (--to source:pack)";
-  console.log(`move them to ${where} and generate them for every tool: multi-agent-kit adopt --new${config.local ? "" : " --to <source:pack>"}`);
+  if (config.local) {
+    console.log(`move them to the local layer (${config.local}) and generate them for every tool: multi-agent-kit adopt --new`);
+  } else if (config.subprojects.length) {
+    const names = config.subprojects.map((entry) => entry.path).join(", ");
+    console.log(`move them to a subproject (${names}) or a pack and generate them for every tool: multi-agent-kit adopt --new --to <subproject|source:pack>`);
+  } else {
+    console.log("move them to a pack and generate them for every tool: multi-agent-kit adopt --new --to <source:pack>");
+  }
 }
 
 function reportAdoption({ adopted, skipped }) {
   for (const item of adopted) console.log(`adopted  ${item.id}: ${item.from} -> ${item.to}`);
   for (const item of skipped) console.log(`skipped  ${item.id}: ${item.reason}`);
+}
+
+// Syncs or checks one project and prints its report; returns false when something needs attention.
+async function syncProject(root, label, { check, update, takeOver }) {
+  let result = await sync(root, { check, update, takeOver });
+  if (!check && result.config.autoAdopt && result.discovered.length) {
+    const adoption = await adoptNew(root, { to: result.config.autoAdopt });
+    reportAdoption(adoption);
+    result = await sync(root, { check, takeOver });
+  }
+  if (result.takenOver.length && !check) console.log(`${label}took over ${result.takenOver.length} hand-made copies that equal their source`);
+  reportDiscovered(result.discovered, result.config);
+  for (const shadow of result.shadows) console.log(`${label}overrides ${shadow.id}: ${shadow.by} replaces ${shadow.from}`);
+  const problems = [];
+  if (result.trackedPrivate.length) {
+    problems.push(`private files are tracked by git (run git rm --cached): ${result.trackedPrivate.join(", ")}`);
+  }
+  if (check) {
+    if (result.changed.length || result.stale.length) {
+      problems.push(`agent files are out of date: ${[...result.changed, ...result.stale].join(", ")}`);
+      problems.push(`run "multi-agent-kit sync"; if you edited a generated file by hand, run "multi-agent-kit adopt <file>" first`);
+    }
+    if (problems.length) console.error(problems.map((problem) => `${label}${problem}`).join("\n"));
+    else console.log(`${label}multi-agent-kit: up to date`);
+    return !problems.length;
+  }
+  const privateCount = [...result.outputs.values()].filter((output) => output.private).length;
+  console.log(`${label}multi-agent-kit: ${result.outputs.size} files (${result.changed.length} changed, ${result.stale.length} removed${privateCount ? `, ${privateCount} private` : ""})`);
+  if (problems.length) console.error(problems.map((problem) => `${label}${problem}`).join("\n"));
+  return !problems.length;
 }
 
 async function main() {
@@ -128,38 +169,19 @@ async function main() {
     const update = takeFlag(args, "--update");
     const takeOver = takeFlag(args, "--take-over");
     assertNoOptions(args);
-    let result = await sync(root, { check, update, takeOver });
-    if (!check && result.config.autoAdopt && result.discovered.length) {
-      const adoption = await adoptNew(root, { to: result.config.autoAdopt });
-      reportAdoption(adoption);
-      result = await sync(root, { check, takeOver });
+    // In a monorepo every subproject is synced with its own config first, then the root.
+    const { subprojects } = await loadConfig(root);
+    const projects = [];
+    for (const subproject of subprojects) {
+      const subRoot = path.join(root, subproject.path);
+      if (await exists(path.join(subRoot, CONFIG_FILE))) projects.push({ root: subRoot, label: `${subproject.path}: ` });
     }
-    if (result.takenOver.length && !check) console.log(`took over ${result.takenOver.length} hand-made copies that equal their source`);
-    reportDiscovered(result.discovered, result.config);
-    for (const shadow of result.shadows) console.log(`overrides ${shadow.id}: ${shadow.by} replaces ${shadow.from}`);
-    const problems = [];
-    if (result.trackedPrivate.length) {
-      problems.push(`private files are tracked by git (run git rm --cached): ${result.trackedPrivate.join(", ")}`);
+    projects.push({ root, label: subprojects.length ? "(root) " : "" });
+    let failed = false;
+    for (const project of projects) {
+      failed = !await syncProject(project.root, project.label, { check, update, takeOver }) || failed;
     }
-    if (check) {
-      if (result.changed.length || result.stale.length) {
-        problems.push(`agent files are out of date: ${[...result.changed, ...result.stale].join(", ")}`);
-        problems.push(`run "multi-agent-kit sync"; if you edited a generated file by hand, run "multi-agent-kit adopt <file>" first`);
-      }
-      if (problems.length) {
-        console.error(problems.join("\n"));
-        process.exitCode = 1;
-      } else {
-        console.log("multi-agent-kit: up to date");
-      }
-      return;
-    }
-    const privateCount = [...result.outputs.values()].filter((output) => output.private).length;
-    console.log(`multi-agent-kit: ${result.outputs.size} files (${result.changed.length} changed, ${result.stale.length} removed${privateCount ? `, ${privateCount} private` : ""})`);
-    if (problems.length) {
-      console.error(problems.join("\n"));
-      process.exitCode = 1;
-    }
+    if (failed) process.exitCode = 1;
     return;
   }
 
@@ -220,7 +242,18 @@ async function main() {
   if (command === "adopt") {
     assertNoOptions(args);
     if (!args.length) throw new Error("adopt needs at least one generated file, or --new");
-    const results = await adopt(root, args);
+    // Paths are relative to where the command runs; each file goes to the project that generated it
+    // (the nearest folder with multi-agent-kit.json), so this also works from a monorepo root.
+    const byProject = new Map();
+    for (const argument of args) {
+      const absolute = path.resolve(process.cwd(), argument);
+      let owner = path.dirname(absolute);
+      while (!await exists(path.join(owner, CONFIG_FILE)) && path.dirname(owner) !== owner) owner = path.dirname(owner);
+      if (!await exists(path.join(owner, CONFIG_FILE))) owner = root;
+      byProject.set(owner, [...(byProject.get(owner) || []), absolute]);
+    }
+    const results = [];
+    for (const [owner, files] of byProject) results.push(...await adopt(owner, files));
     for (const result of results) {
       console.log(`${result.status.padEnd(9)} ${result.file}${result.source ? ` -> ${result.source}` : ""}${result.message ? `: ${result.message}` : ""}`);
     }

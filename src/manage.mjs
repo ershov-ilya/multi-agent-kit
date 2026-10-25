@@ -1,11 +1,11 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { catalog, matchEntries } from "./catalog.mjs";
-import { findPack, indexPacks, packOrigin } from "./collect.mjs";
+import { findPack, indexPacks, packOrigin, subprojectLayers } from "./collect.mjs";
 import { CONFIG_FILE, loadConfig } from "./config.mjs";
 import { discover } from "./discover.mjs";
 import { resolveSources } from "./sources.mjs";
-import { plan, sync } from "./sync.mjs";
+import { plan, syncTree } from "./sync.mjs";
 import { exists, parseFrontmatter } from "./util.mjs";
 
 // JSON with short arrays and flat objects on one line, the way people write multi-agent-kit.json by hand.
@@ -77,7 +77,7 @@ export async function enable(root, reference) {
     const labels = config.packs.map(sameLabel(packs));
     if (labels.includes(packLabel(pack))) return { message: `pack ${packLabel(pack)} is already enabled` };
     await editConfig(root, (raw) => raw.packs.push(reference));
-    await sync(root);
+    await syncTree(root);
     return { message: `enabled pack ${packLabel(pack)}` };
   }
   const { entries } = await catalog(root);
@@ -88,7 +88,7 @@ export async function enable(root, reference) {
     raw.exclude = raw.exclude.filter((pattern) => pattern !== entry.id && pattern !== entry.name);
     if (!packEnabled) raw.include.push(`${entry.layer}/${entry.id}`);
   });
-  await sync(root);
+  await syncTree(root);
   return { message: `enabled ${entry.layer}/${entry.id}` };
 }
 
@@ -102,7 +102,7 @@ export async function disable(root, reference) {
     await editConfig(root, (raw) => {
       raw.packs = raw.packs.filter((candidate) => sameLabel(packs)(candidate) !== label);
     });
-    await sync(root);
+    await syncTree(root);
     return { message: `disabled pack ${label}` };
   }
   const { entries } = await catalog(root);
@@ -119,15 +119,21 @@ export async function disable(root, reference) {
     });
     if (raw.include.length === before && !raw.exclude.includes(entry.id)) raw.exclude.push(entry.id);
   });
-  await sync(root);
+  await syncTree(root);
   return { message: `disabled ${entry.layer}/${entry.id}` };
 }
 
 async function resolveLayer(root, config, target) {
   if (!target || target === "local") {
-    if (!config.local) throw new Error('No local layer: set "local" in multi-agent-kit.json or pass --to <source:pack>');
+    if (!config.local) {
+      const hint = config.subprojects.length ? `--to <subproject> (${config.subprojects.map((entry) => entry.path).join(", ")}) or ` : "";
+      throw new Error(`No local layer: set "local" in multi-agent-kit.json or pass ${hint}--to <source:pack>`);
+    }
     return { label: `local:${config.local}`, directory: path.join(root, config.local), local: true };
   }
+  // In a monorepo, a subproject path names that subproject's local layer.
+  const layer = (await subprojectLayers(root, config, () => {})).find((candidate) => candidate.path === target.replace(/\/$/, ""));
+  if (layer) return { label: layer.origin.label, directory: layer.directory, local: true };
   const sources = await resolveSources(root, config);
   const pack = findPack(await indexPacks(sources), target);
   if (pack.source.mode !== "path") {
@@ -190,7 +196,7 @@ export async function adoptNew(root, { to, from, names = [] } = {}) {
       for (const item of adopted) raw.include.push(`${layer.label}/${item.id}`);
     });
   }
-  if (adopted.length) await sync(root);
+  if (adopted.length) await syncTree(root);
   return { adopted, skipped, layer: layer.label };
 }
 
@@ -212,7 +218,7 @@ export async function remove(root, reference, { yes = false } = {}) {
   for (const entry of matches) {
     if (entry.writable) {
       const target = entry.kind === "skills" ? path.join(entry.root, "skills", entry.name) : entry.files[0].absolute;
-      actions.push({ type: "delete-source", label: `${entry.layer}/${entry.id}`, target, shared: entry.source !== "local" });
+      actions.push({ type: "delete-source", label: `${entry.layer}/${entry.id}`, target, shared: !["local", "sub"].includes(entry.source) });
     } else {
       readOnly.push(entry);
     }
@@ -235,6 +241,6 @@ export async function remove(root, reference, { yes = false } = {}) {
     raw.include = raw.include.filter((candidate) => !candidate.endsWith(`/${id}`));
     if (exclude && !raw.exclude.includes(id)) raw.exclude.push(id);
   });
-  await sync(root);
+  await syncTree(root);
   return { dryRun: false, actions };
 }
