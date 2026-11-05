@@ -2,7 +2,7 @@
 title: growth-social-media-and-personal-brand-skill
 status: in progress
 created: 2026-11-05
-implementation: first version of the skill committed; review pass and follow-ups pending
+implementation: first version committed; review pass done in OPS-0004, pilot and quarterly refresh pending
 ---
 
 # OPS-0003: скилл `social-media-and-personal-brand` в паке `growth`
