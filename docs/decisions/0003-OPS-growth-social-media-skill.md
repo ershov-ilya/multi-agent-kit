@@ -7,6 +7,8 @@ implementation: first version of the skill committed; review pass and follow-ups
 
 # OPS-0003: скилл `social-media-and-personal-brand` в паке `growth`
 
+Продолжение и результаты следующего прохода: [OPS-0004](0004-OPS-growth-social-media-review.md).
+
 Рабочий журнал, чтобы продолжить работу над скиллом с того места, где она остановилась.
 
 ## Задача
