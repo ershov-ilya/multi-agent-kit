@@ -20,6 +20,11 @@ const LOCATIONS = {
   codex: [
     { kind: "skills", directory: ".agents/skills" },
   ],
+  hermes: [
+    { kind: "skills", directory: ".agents/skills" },
+    { kind: "agents", directory: ".hermes/agents", extension: ".md" },
+    { kind: "rules", directory: ".hermes/rules", extension: ".md" },
+  ],
 };
 
 async function newest(files) {
@@ -42,8 +47,12 @@ export async function discover(root, outputs, targets) {
     found.set(id, { id, kind, name, copies: [...(found.get(id)?.copies || []), copy] });
   };
 
+  // Codex and Hermes share .agents/skills: scan every folder once.
+  const scanned = new Set();
   for (const target of targets) {
     for (const location of LOCATIONS[target]) {
+      if (scanned.has(location.directory)) continue;
+      scanned.add(location.directory);
       const directory = path.join(root, location.directory);
       if (!await isDirectory(directory)) continue;
       if (location.kind === "skills") {

@@ -36,6 +36,7 @@
     "claude-code",
     "cursor",
     "codex",
+    "hermes",
     "agent-skills",
     "multi-agent",
     "scaffold"

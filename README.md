@@ -210,7 +210,7 @@ multi-agent-kit.json ──► sources ──► packs ──► local layer ─
 
 | Key | Meaning |
 |-----|---------|
-| `targets` | which tools to generate for: `claude`, `cursor`, `codex` |
+| `targets` | which tools to generate for: `claude`, `cursor`, `codex`, `hermes` (default: the first three) |
 | `sources` | `"package-name"`, `{ "package" }`, `{ "git", "ref" }` or `{ "path" }`; `path` wins when it exists |
 | `packs` | packs to enable; write `source-id:pack` when two sources have the same pack name |
 | `include` / `exclude` | single items from other packs / items to drop |
@@ -255,13 +255,28 @@ bit; they get no marker and no `{{…}}` substitution.
 Each tool also reads the folders of the others: Cursor reads `.claude/` and `.codex/` agents and
 `.claude/skills/` and `.agents/skills/`. To keep the number of copies down:
 
-- with both `cursor` and `codex` targets, skills go only to `.agents/skills/`, which both tools read;
+- with `cursor` and `codex` or `hermes` as targets, skills go only to `.agents/skills/`, which all of them read;
 - for subagents Cursor prefers its own `.cursor/agents/` over the other copies;
 - in a monorepo, do not add the repository root as one more folder of a Cursor multi-root workspace,
   or Cursor sees the root's aggregated `.claude/` copies next to each subproject's `.cursor/` files.
 
-The `AGENTS.md` workflow block is written only when `codex` is a target; Cursor and Claude Code get the
-same text as the `agent-kit-workflow` rule.
+The `AGENTS.md` workflow block is written only when `codex` or `hermes` is a target; Cursor and Claude
+Code get the same text as the `agent-kit-workflow` rule.
+
+### Hermes
+
+[Hermes Agent](https://hermes-agent.nousresearch.com/) is an opt-in target: add `"hermes"` to `targets`.
+Hermes loads one project file, `AGENTS.md`, and has no rule or subagent files, so `sync` writes:
+
+| Item | Where | How Hermes gets it |
+|------|-------|--------------------|
+| skills, commands | `.agents/skills/` | recent versions load them after `hermes skills trust` in the project; older ones read the files by path |
+| rules | `.hermes/rules/*.md` | listed in the `agent-kit-hermes` block of `AGENTS.md` with description, `alwaysApply` and `globs` |
+| subagents | `.hermes/agents/*.md` | listed in the same block; the agent passes the role text as `context` of `delegate_task` |
+| MCP servers | `.hermes/mcp-servers.yaml` | Hermes has no project MCP config: merge the block into `~/.hermes/config.yaml` yourself |
+
+Private rules and roles are listed in the private `.hermes/private-index.md`, not in `AGENTS.md`. Do not
+keep a `.hermes.md` in the project: Hermes would load it instead of `AGENTS.md`.
 
 ### Public and private layers
 

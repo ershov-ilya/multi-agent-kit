@@ -211,7 +211,7 @@ multi-agent-kit.json ──► sources ──► packs ──► local layer ─
 
 | Ключ | Значение |
 |------|----------|
-| `targets` | для каких инструментов генерировать: `claude`, `cursor`, `codex` |
+| `targets` | для каких инструментов генерировать: `claude`, `cursor`, `codex`, `hermes` (по умолчанию первые три) |
 | `sources` | `"package-name"`, `{ "package" }`, `{ "git", "ref" }` или `{ "path" }`; `path` побеждает, если путь существует |
 | `packs` | какие паки включить; пишите `source-id:pack`, когда у двух источников одинаковое имя пака |
 | `include` / `exclude` | отдельные элементы из других паков / элементы, которые нужно отбросить |
@@ -235,6 +235,21 @@ multi-agent-kit.json ──► sources ──► packs ──► local layer ─
 Командные процессы, внутренние сервисы и личные заметки живут в kit-ах: отдельных (обычно приватных)
 репозиториях того же формата. Начните с `npx multi-agent-kit new-kit acme-team-kit` и следуйте
 [docs/private-and-team-kits.md](docs/private-and-team-kits.md).
+
+### Hermes
+
+[Hermes Agent](https://hermes-agent.nousresearch.com/) подключается явно: добавьте `"hermes"` в `targets`.
+Hermes загружает один файл проекта, `AGENTS.md`, а файлов правил и субагентов у него нет, поэтому `sync` пишет:
+
+| Что | Куда | Как это получает Hermes |
+|-----|------|-------------------------|
+| скиллы, команды | `.agents/skills/` | свежие версии загружают их после `hermes skills trust` в проекте, старые читают файлы по пути |
+| правила | `.hermes/rules/*.md` | перечислены в блоке `agent-kit-hermes` файла `AGENTS.md` с описанием, `alwaysApply` и `globs` |
+| субагенты | `.hermes/agents/*.md` | перечислены в том же блоке; агент передаёт текст роли в `context` вызова `delegate_task` |
+| MCP-серверы | `.hermes/mcp-servers.yaml` | проектного MCP-конфига у Hermes нет: перенесите блок в `~/.hermes/config.yaml` сами |
+
+Приватные правила и роли перечислены в приватном `.hermes/private-index.md`, а не в `AGENTS.md`. Не держите
+в проекте `.hermes.md`: Hermes загрузит его вместо `AGENTS.md`.
 
 ## Все команды
 

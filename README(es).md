@@ -211,7 +211,7 @@ multi-agent-kit.json ──► sources ──► packs ──► local layer ─
 
 | Clave | Significado |
 |-------|-------------|
-| `targets` | para qué herramientas generar: `claude`, `cursor`, `codex` |
+| `targets` | para qué herramientas generar: `claude`, `cursor`, `codex`, `hermes` (por defecto, las tres primeras) |
 | `sources` | `"package-name"`, `{ "package" }`, `{ "git", "ref" }` o `{ "path" }`; `path` gana si la ruta existe |
 | `packs` | packs que activar; escribe `source-id:pack` cuando dos fuentes tienen el mismo nombre de pack |
 | `include` / `exclude` | elementos sueltos de otros packs / elementos que hay que descartar |

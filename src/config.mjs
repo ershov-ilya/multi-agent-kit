@@ -3,7 +3,9 @@ import path from "node:path";
 import { exists } from "./util.mjs";
 
 export const CONFIG_FILE = "multi-agent-kit.json";
-export const TARGETS = ["cursor", "claude", "codex"];
+export const TARGETS = ["cursor", "claude", "codex", "hermes"];
+// Hermes is opt-in: it adds a block to AGENTS.md, which existing projects did not ask for.
+export const DEFAULT_TARGETS = ["cursor", "claude", "codex"];
 const KNOWN_KEYS = new Set([
   "$schema", "name", "targets", "sources", "packs", "include", "exclude",
   "local", "vars", "cli", "commitPrivate", "decisions", "autoAdopt", "subprojects",
@@ -25,7 +27,7 @@ export async function loadConfig(root) {
 
   const config = {
     name: raw.name || path.basename(root),
-    targets: raw.targets || [...TARGETS],
+    targets: raw.targets || [...DEFAULT_TARGETS],
     sources: raw.sources || ["multi-agent-kit"],
     packs: raw.packs || ["core"],
     include: raw.include || [],

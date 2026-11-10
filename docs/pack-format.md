@@ -8,7 +8,7 @@ packs/
   <pack>/
     pack.json                 { "description": "…", "vars": { "name": "default" } }   optional
     skills/<name>/SKILL.md    + any reference files
-    agents/<name>.md          subagent (Claude Code, Cursor, Codex)
+    agents/<name>.md          subagent (Claude Code, Cursor, Codex; a role file for Hermes)
     agents/<name>.mdc         always-applied agent prompt, emitted as a rule
     commands/<name>.md        slash command (Cursor) and skill (all tools)
     rules/<name>.mdc          Cursor rule; Claude Code gets it as .claude/rules/<name>.md
