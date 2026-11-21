@@ -173,6 +173,9 @@ CLI: `sync [--check] [--update] [--take-over]`, `check`, `list [--long] [--json]
 
 ## Typical tasks
 
+Use [`design-agent-pack`](packs/core/skills/design-agent-pack/SKILL.md) from `core` to design, build,
+or review Agent Skills + MCP packs and choose how to deliver them to the target host.
+
 ### Add or change a skill in a public pack
 
 1. `packs/<pack>/skills/<name>/SKILL.md`, folder name = `name`, description ≤ 1024 characters that
